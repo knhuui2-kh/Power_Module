@@ -1,58 +1,63 @@
 # module_power
 
-面向电赛电源方向的 STM32G4 HAL 核心模块库。只保留可复用源码、接入文档和构建清单；
-临时验证工程、测试样例、调试脚本不进入本目录，避免长期演变成“什么都往里放”的屎山。
+`module_power` 是面向电赛电源方向的 STM32G4 HAL 模块库，聚焦可复用的控制算法、外设适配与通用控制模式。仓库仅维护核心源码、接入文档和构建清单；具体赛题应用、验证工程和调试代码建议在独立工程中维护。
 
-## 模块划分
+## 适用范围
 
-| 模块 | 目录 | 是否依赖 HAL | 职责 |
+- 目标平台：STM32G4 + STM32CubeMX + HAL
+- 外设模块：HRTIM、ADC + DMA、UART
+- 控制模块：PID、滤波器、通用单闭环控制模式
+- 不包含：完整赛题应用、板级 BSP、CubeMX 外设初始化代码、临时验证工程
+
+## 模块组成
+
+| 模块 | 目录 | 依赖 HAL | 职责 |
 |---|---|---|---|
-| PID | `modules/alg/pid` | 否 | 位置式 PID、测量值微分、条件积分抗饱和 |
-| Filter | `modules/alg/filter` | 否 | 一阶低通、滑动平均、中值滤波 |
-| HRTIM PWM | `modules/io/hrtim_pwm` | 是 | HRTIM 逻辑通道、占空比、启停、同步启动 |
-| ADC Sampler | `modules/io/adc_sampler` | 是 | HRTIM 触发 + DMA 循环采样、标定、快照 |
-| UART Debug | `modules/io/uart_debug` | 是 | 非阻塞环形缓冲、格式化打印、丢包统计 |
-| Power Loop | `modules/app` | 间接 | 组合 ADC/PID/HRTIM 的单闭环模板 |
+| PID | `modules/algorithm/pid` | 否 | 位置式 PID、测量值微分、条件积分抗饱和 |
+| Filter | `modules/algorithm/filter` | 否 | 一阶低通、滑动平均、中值滤波 |
+| HRTIM PWM | `modules/driver/hrtim_pwm` | 是 | HRTIM 逻辑通道、占空比、启停、同步启动 |
+| ADC Sampler | `modules/driver/adc_sampler` | 是 | HRTIM 触发 + DMA 循环采样、标定、快照 |
+| UART Debug | `modules/driver/uart_debug` | 是 | 非阻塞环形缓冲、格式化打印、丢包统计 |
+| PowerLoop | `modules/pattern/power_loop` | 间接 | 组合 ADC、PID、HRTIM 的通用单闭环模式 |
 
-## 依赖方向
+## 架构与依赖
 
 ```text
-app  ->  algorithm (纯 C，无 HAL)
- |          ^
- v          |
-io   -------+-> HAL / CubeMX
+pattern  ---> algorithm
+   |
+   +-------> driver ---> HAL / CubeMX
 ```
 
-- 算法层不包含 `stm32g4xx_hal.h`，负责纯计算，便于移植和长期维护。
-- 外设层只做硬件语义适配，直接调用 HAL；不实现控制策略。
-- 应用层负责信号映射和调用顺序，不直接操作寄存器。
+- `modules/algorithm`：纯 C 算法层，不依赖 HAL，便于移植和复用。
+- `modules/driver`：硬件语义适配层，直接调用 HAL；不包含控制策略。
+- `modules/pattern`：通用控制模式层，组合算法层和驱动层；不直接操作寄存器，也不包含赛题业务状态机。
 
 ## 快速接入
 
-1. 按 `docs/g474_cube_integration.md` 配置 CubeMX。
-2. 通过 `power_modules.cmake` 或 `power_modules.mk` 把源码和 include 路径加入目标工程。
-3. 单闭环可直接使用 `PowerLoop`；多环、SPWM/SVPWM 等算法逐步沉淀到 `modules/alg`。
-4. `PowerLoop` 接口见 `modules/app/power_loop.h`；现有 SPWM/SVPWM 的接入方式见接入文档。
+1. 按 `docs/g474_cube_integration.md` 完成 CubeMX 配置。
+2. 在目标工程的 CMake 配置中 `include` 根目录下的 `power_modules.cmake`，按需加入 `POWER_ALGORITHM_SOURCES`、`POWER_DRIVER_SOURCES`、`POWER_PATTERN_SOURCES` 和 `POWER_INCLUDE_DIRS`。
+3. 单闭环可直接使用 `PowerLoop`；多环、SPWM/SVPWM 等算法建议逐步沉淀到 `modules/algorithm`。
+4. `PowerLoop` 接口见 `modules/pattern/power_loop.h`；已有 SPWM/SVPWM 的接入方式见 `docs/g474_cube_integration.md`。
 
 ## 设计约定
 
 - 不使用动态内存，存储区由调用方提供。
-- 初始化与周期更新分离；高频路径中不调用阻塞 HAL、不格式化字符串。
-- `min_duty`、`max_duty`、输出限幅必须显式配置，禁止隐式默认到危险范围。
+- 初始化与周期更新分离；高频路径中不调用阻塞 HAL、不做字符串格式化。
+- `min_duty`、`max_duty`、输出限幅必须显式配置。
 - CubeMX 生成区不手工修改；用户代码放在 `USER CODE` 区域。
-- 公共头文件按模块命名，如 `power_pid.h`、`hrtim_pwm.h`，应用层只包含需要的模块。
-- 模块文件保持“小而专”：新增职责前先判断是否应该新建模块，而不是继续往旧模块里堆功能。
+- 公共头文件采用模块前缀命名，如 `power_pid.h`、`hrtim_pwm.h`。
+- 模块保持单一职责：新增职责前先判断是否应新建模块，而不是继续扩大既有模块。
 
 ## 维护规则
 
-- 本目录只保留核心模块、模块文档和构建清单。
-- 临时验证工程、单元测试、样例工程、调参脚本放在库外的独立目录或仓库，验证结论再反哺核心代码。
-- 新增或修改外设层时序后，必须在目标工程和硬件上验证采样点、死区、相位和封波顺序。
-- 禁止把 `build/`、`Debug/`、`Release/`、`.o`、`.elf` 等编译产物提交进本目录。
-- 删除功能时一并删除其头文件、源文件、构建清单条目和文档引用，不留死代码。
+- 仓库只保留核心模块、接入文档和构建清单。
+- 验证工程、单元测试、样例工程和调参脚本在库外独立维护，验证结论再合并回核心代码。
+- 修改驱动层时序后，必须验证采样点、死区、相位和封波顺序。
+- 不提交 `build/`、`Debug/`、`Release/`、`.o`、`.elf`、`.hex` 等构建产物。
+- 删除功能时同步清理源文件、头文件、构建清单和文档引用，避免遗留无效内容。
 
-## AI 协作
+## 自动化与 AI 辅助开发
 
-- 算法层是 AI 修改的首选区域：无 HAL、接口稳定、行为容易验证。
-- 外设层 API 和数据结构名是稳定契约；AI 可以优化内部实现，但不能随意改函数语义。
-- 修改控制逻辑前先读 `docs/architecture.md`，明确可改区域、禁止事项和验证要求。
+- 算法层无 HAL 依赖，接口稳定，适合自动化修改和外部验证。
+- 驱动层 API 与数据结构名属于稳定契约；内部实现可优化，公开语义不应随意变更。
+- 修改控制逻辑前请先阅读 `docs/architecture.md`，明确修改范围和硬件验证要求。

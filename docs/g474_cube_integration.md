@@ -32,12 +32,12 @@ HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
 ## 2. 工程接入
 
 - 添加源文件目录：
-  - `modules/alg/pid`
-  - `modules/alg/filter`
-  - `modules/io/hrtim_pwm`
-  - `modules/io/adc_sampler`
-  - `modules/io/uart_debug`
-  - `modules/app`
+  - `modules/algorithm/pid`
+  - `modules/algorithm/filter`
+  - `modules/driver/hrtim_pwm`
+  - `modules/driver/adc_sampler`
+  - `modules/driver/uart_debug`
+  - `modules/pattern`
 - 添加对应 include 路径。
 - CubeMX 重新生成时只保留 `USER CODE` 区域中的调用。
 
@@ -76,23 +76,21 @@ HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
 (void)HrtimPwm_SetDuty(&s_pwm, 2U, foc.Tc);
 ```
 
-如果后续想把 `spwm/svpwm` 放进 `modules/alg`，只需去掉其中的 HAL 依赖，
+如果后续想把 `spwm/svpwm` 放进 `modules/algorithm`，只需去掉其中的 HAL 依赖，
 把输入输出保持为归一化浮点量，底层写比较值的动作继续由 `HrtimPwm` 负责。
 
-## 7. CMake / Makefile 接入示例
-
-CMake：
+## 7. CMake 接入示例
 
 ```cmake
 include(${CMAKE_SOURCE_DIR}/module_power/power_modules.cmake)
-target_sources(your_target PRIVATE ${POWER_ALG_SOURCES} ${POWER_IO_SOURCES} ${POWER_APP_SOURCES})
-target_include_directories(your_target PRIVATE ${POWER_INCLUDE_DIRS})
-```
 
-CubeMX Makefile：
+target_sources(your_target PRIVATE
+    ${POWER_ALGORITHM_SOURCES}
+    ${POWER_DRIVER_SOURCES}
+    ${POWER_PATTERN_SOURCES}
+)
 
-```make
-include module_power/power_modules.mk
-C_SOURCES += $(POWER_ALG_SOURCES) $(POWER_IO_SOURCES) $(POWER_APP_SOURCES)
-C_INCLUDES += $(POWER_INCLUDES)
+target_include_directories(your_target PRIVATE
+    ${POWER_INCLUDE_DIRS}
+)
 ```

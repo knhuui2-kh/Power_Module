@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-/* 单闭环应用层：只组合 ADC / PID / HRTIM，不直接操作 HAL。 */
+/* 通用单闭环模式层：组合 ADC / PID / HRTIM，不直接操作 HAL。 */
 typedef struct
 {
     Pid pid;

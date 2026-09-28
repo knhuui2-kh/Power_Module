@@ -3,11 +3,11 @@
 ## 1. 分层
 
 ```text
-PowerLoop / 你的控制状态机         应用层：组合、策略、保护
+PowerLoop / 你的控制状态机         模式层：通用回路与调度；赛题业务在独立应用工程
         |
 PID / Filter / 后续调制算法        算法层：纯 C，无 HAL
         |
-HrtimPwm / AdcSampler / UartDebug  外设适配层：只认 HAL 句柄和硬件语义
+HrtimPwm / AdcSampler / UartDebug  驱动层：只认 HAL 句柄和硬件语义
         |
 HAL + CubeMX 生成代码              芯片外设层：初始化、NVIC、DMA、时钟
 ```
@@ -31,28 +31,28 @@ HRTIM 周期事件 -> ADC 触发 -> DMA 循环缓冲 -> AdcSampler_Update
 ## 3. 解耦规则
 
 - 算法层不得包含 HAL 头文件，不得出现 `HAL_`、`__HAL_`、寄存器类型。
-- 外设层不得知道“电压环”“电流环”“拓扑”这些业务概念。
-- 应用层可以同时包含算法层和外设层，但不得直接写 HRTIM/ADC 寄存器。
+- 驱动层不得知道“电压环”“电流环”“拓扑”这些业务概念。
+- 模式层可以同时包含算法层和驱动层，但不得直接写 HRTIM/ADC 寄存器。
 - 采样、控制、输出使用统一单位：电压 V、电流 A、占空比 0~1、时间 s。
 - 共享数据在控制中断中更新，读取方在同一个 32 位访问内完成；复杂结构使用快照。
 
 ## 4. 电赛使用方式
 
 - 赛前：模块在独立验证工程中完成编译和硬件验证，本库只保留验证后的稳定代码。
-- 赛中：新题先改 CubeMX 引脚/通道，再改应用层映射和参数，不重写算法。
+- 赛中：新题先改 CubeMX 引脚/通道，再改模式层与赛题工程中的映射和参数，不重写算法。
 - 赛后：把验证过的拓扑控制、滤波器、保护逻辑沉淀回核心模块，并同步更新文档。
 
 ## 5. AI 操作契约
 
 **AI 可以直接做**
 
-- 新增/修改 `modules/alg` 下的纯算法。
+- 新增/修改 `modules/algorithm` 下的纯算法。
 - 在 `docs` 中补充使用说明和边界条件。
 - 为 `PowerLoop` 增加通用性强的组合逻辑。
 
 **AI 需要谨慎做**
 
-- 修改 `modules/io` 的 API、时序、启停顺序。
+- 修改 `modules/driver` 的 API、时序、启停顺序。
 - 修改 `HrtimPwm` 的 compare 映射、`AdcSampler` 的 DMA 帧解析。
 - 这些改动必须附带独立验证结论，至少说明对采样点和 PWM 相位的影响。
 
@@ -73,8 +73,8 @@ HRTIM 周期事件 -> ADC 触发 -> DMA 循环缓冲 -> AdcSampler_Update
 
 ## 7. 推荐扩展点
 
-- 在 `modules/alg/filter` 中新增滤波算法：只操作 float，不包含 HAL。
-- 在 `modules/alg` 中新增控制律：通过 struct 保存状态，接口保持 `Init/Reset/Update` 风格。
-- 在 `modules/app` 中新增多环、均流、MPPT 等组合逻辑：只调用现成模块，不直接碰 HAL。
+- 在 `modules/algorithm/filter` 中新增滤波算法：只操作 float，不包含 HAL。
+- 在 `modules/algorithm` 中新增控制律：通过 struct 保存状态，接口保持 `Init/Reset/Update` 风格。
+- 在 `modules/pattern` 中新增多环、均流、MPPT 等组合逻辑：只调用现成模块，不直接碰 HAL。
 - 在 `UartDebug` 之上定义遥测帧：使用二进制或 CSV，固定通道 ID，便于分析和参数整定。
 - 在 `HrtimPwm` 上扩展移相、变频、突发模式时，先在 `docs` 写时序假设，再改代码。
