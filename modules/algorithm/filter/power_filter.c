@@ -1,5 +1,4 @@
 #include "power_filter.h"
-
 #include <stddef.h>
 
 static float Filter_Clamp(float value, float min, float max)

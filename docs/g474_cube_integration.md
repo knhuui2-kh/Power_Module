@@ -51,7 +51,7 @@ HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
 ## 4. 时序建议
 
 - 三相或多相应用使用 `HrtimPwm_StartAll()` 统一启动，避免逐个启动带来相位差。
-- 控制频率 = HRTIM 中断频率；PID 的 `dt` 取该周期，例如 20 kHz 对应 50 us。
+- 控制频率 = HRTIM 中断频率；PI 参数按固定控制周期整定，改变开关频率后需要重新整定。
 - `AdcSampler_Update()` 放在控制中断开头，使用最近一帧完整数据；`AdcSampler_IsUpdated()` 可用于采样超时保护。
 - `HrtimPwm_SetDuty()` 写入后由 HRTIM 预装载在周期边界生效。
 - 遥测频率控制在 10~100 Hz，避免串口占用控制时间。

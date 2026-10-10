@@ -24,8 +24,8 @@ typedef struct
 
 void PowerLoop_Init(PowerLoop *loop, AdcSampler *adc, uint16_t adc_channel,
                     HrtimPwm *pwm, uint8_t pwm_channel);
-void PowerLoop_ConfigPid(PowerLoop *loop, float kp, float ki, float kd,
-                         float dt, float out_min, float out_max);
+void PowerLoop_ConfigPid(PowerLoop *loop, float kp, float ki,
+                         float out_min, float out_max);
 void PowerLoop_SetReference(PowerLoop *loop, float reference);
 void PowerLoop_Enable(PowerLoop *loop);
 void PowerLoop_Disable(PowerLoop *loop);

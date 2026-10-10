@@ -13,7 +13,7 @@
 
 | 模块 | 目录 | 依赖 HAL | 职责 |
 |---|---|---|---|
-| PID | `modules/algorithm/pid` | 否 | 位置式 PID、测量值微分、条件积分抗饱和 |
+| PID | `modules/algorithm/pid` | 否 | 增量式 PI、无 dt、固定控制周期使用、输出限幅 |
 | Filter | `modules/algorithm/filter` | 否 | 一阶低通、滑动平均、中值滤波 |
 | HRTIM PWM | `modules/driver/hrtim_pwm` | 是 | HRTIM 逻辑通道、占空比、启停、同步启动 |
 | ADC Sampler | `modules/driver/adc_sampler` | 是 | HRTIM 触发 + DMA 循环采样、标定、快照 |
@@ -47,6 +47,7 @@ pattern  ---> algorithm
 - CubeMX 生成区不手工修改；用户代码放在 `USER CODE` 区域。
 - 公共头文件采用模块前缀命名，如 `power_pid.h`、`hrtim_pwm.h`。
 - 模块保持单一职责：新增职责前先判断是否应新建模块，而不是继续扩大既有模块。
+- PID 采用增量式 PI，`Ki` 为每周期积分系数；改变控制频率后需要重新整定。
 
 ## 维护规则
 

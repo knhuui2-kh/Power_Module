@@ -20,18 +20,18 @@ void PowerLoop_Init(PowerLoop *loop, AdcSampler *adc, uint16_t adc_channel,
     loop->enabled = 0U;
     loop->initialized = 1U;
 
-    Pid_Init(&loop->pid, 0.0f, 0.0f, 0.0f, 0.001f, 0.0f, 1.0f);
+    Pid_Init(&loop->pid, 0.0f, 0.0f, 0.0f, 1.0f);
 }
 
-void PowerLoop_ConfigPid(PowerLoop *loop, float kp, float ki, float kd,
-                         float dt, float out_min, float out_max)
+void PowerLoop_ConfigPid(PowerLoop *loop, float kp, float ki,
+                         float out_min, float out_max)
 {
     if ((loop == NULL) || (loop->initialized == 0U))
     {
         return;
     }
 
-    Pid_Init(&loop->pid, kp, ki, kd, dt, out_min, out_max);
+    Pid_Init(&loop->pid, kp, ki, out_min, out_max);
 }
 
 void PowerLoop_SetReference(PowerLoop *loop, float reference)
@@ -50,6 +50,7 @@ void PowerLoop_Enable(PowerLoop *loop)
     }
 
     Pid_Reset(&loop->pid);
+    Pid_SetOutput(&loop->pid, HrtimPwm_GetDuty(loop->pwm, loop->pwm_channel));
     loop->enabled = 1U;
 }
 

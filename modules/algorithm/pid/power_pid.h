@@ -3,31 +3,25 @@
 
 #include <stdint.h>
 
-/* 位置式 PID：测量值微分 + 条件积分抗饱和，dt 单位秒，输出范围由外部给定。 */
+/*
+ * 增量式 PI：内部计算 Δu 并累加，对外返回绝对输出。
+ * 不依赖采样周期参数，适用于固定控制周期；Ki 为每周期积分系数，改变控制频率需重新整定。
+ */
 typedef struct
 {
     float kp;
     float ki;
-    float kd;
-    float dt;
     float out_min;
     float out_max;
-    float integral;
-    float integral_min;
-    float integral_max;
-    float prev_measurement;
     float output;
-    uint8_t initialized;
+    float prev_error;
 } Pid;
 
-void Pid_Init(Pid *pid, float kp, float ki, float kd,
-              float dt, float out_min, float out_max);
+void Pid_Init(Pid *pid, float kp, float ki, float out_min, float out_max);
 void Pid_Reset(Pid *pid);
-void Pid_SetGains(Pid *pid, float kp, float ki, float kd);
-void Pid_SetDt(Pid *pid, float dt);
+void Pid_SetGains(Pid *pid, float kp, float ki);
 void Pid_SetOutputLimits(Pid *pid, float out_min, float out_max);
-void Pid_SetIntegralLimits(Pid *pid, float integral_min, float integral_max);
+void Pid_SetOutput(Pid *pid, float output);
 float Pid_Update(Pid *pid, float setpoint, float measurement);
-float Pid_UpdateDt(Pid *pid, float setpoint, float measurement, float dt);
 
 #endif
