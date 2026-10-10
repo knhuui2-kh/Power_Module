@@ -12,15 +12,10 @@ set(POWER_DRIVER_SOURCES
     ${POWER_MODULE_ROOT}/modules/driver/uart_debug/uart_debug.c
 )
 
-set(POWER_PATTERN_SOURCES
-    ${POWER_MODULE_ROOT}/modules/pattern/power_loop.c
-)
-
 set(POWER_INCLUDE_DIRS
     ${POWER_MODULE_ROOT}/modules/algorithm/filter
     ${POWER_MODULE_ROOT}/modules/algorithm/pid
     ${POWER_MODULE_ROOT}/modules/driver/adc_sampler
     ${POWER_MODULE_ROOT}/modules/driver/hrtim_pwm
     ${POWER_MODULE_ROOT}/modules/driver/uart_debug
-    ${POWER_MODULE_ROOT}/modules/pattern
 )
