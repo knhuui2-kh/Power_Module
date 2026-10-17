@@ -82,6 +82,48 @@ HAL_StatusTypeDef AdcSampler_Stop(AdcSampler *sampler)
     return status;
 }
 
+/* 解析指定帧：标定、低通、更新快照。 */
+static void AdcSampler_ParseFrame(AdcSampler *sampler, uint16_t frame)
+{
+    const uint16_t *frame_data;
+    uint16_t i;
+
+    frame = (uint16_t)(frame % sampler->frame_count);
+    frame_data = &sampler->dma_buf[(uint32_t)frame * sampler->channel_count];
+
+    for (i = 0U; i < sampler->channel_count; i++)
+    {
+        float engineering;
+
+        sampler->raw[i] = frame_data[i];
+        engineering = (float)frame_data[i] * sampler->ch[i].scale
+                      + sampler->ch[i].offset;
+        sampler->value[i] = Lpf1_Update(&sampler->ch[i].lpf, engineering);
+    }
+
+    sampler->last_frame = frame;
+    sampler->has_data = 1U;
+    sampler->updated = 1U;
+}
+
+/*
+ * 由 ADC DMA 完成回调显式指定刚完成的帧。
+ * 循环 DMA 在置起传输完成标志的同一时刻已经把 CNDTR 重装为初值，回调里读到的
+ * 剩余计数等于总长度，AdcSampler_Update() 会一直判定“无新帧”直接返回，
+ * 所以控制环放在 DMA 回调里时必须走本接口。帧数为 1 时固定传 0。
+ */
+void AdcSampler_UpdateFrame(AdcSampler *sampler, uint16_t frame)
+{
+    if ((sampler == NULL) || (sampler->started == 0U) || (sampler->dma_buf == NULL)
+        || (sampler->frame_count == 0U) || (sampler->channel_count == 0U))
+    {
+        return;
+    }
+
+    sampler->updated = 0U;
+    AdcSampler_ParseFrame(sampler, frame);
+}
+
 void AdcSampler_Update(AdcSampler *sampler)
 {
     DMA_HandleTypeDef *hdma;
@@ -89,8 +131,6 @@ void AdcSampler_Update(AdcSampler *sampler)
     uint32_t remain;
     uint32_t complete_frames;
     uint32_t frame;
-    const uint16_t *frame_data;
-    uint16_t i;
 
     if ((sampler == NULL) || (sampler->started == 0U)
         || (sampler->hadc == NULL) || (sampler->hadc->DMA_Handle == NULL))
@@ -121,21 +161,7 @@ void AdcSampler_Update(AdcSampler *sampler)
         return;
     }
 
-    frame_data = &sampler->dma_buf[frame * sampler->channel_count];
-
-    for (i = 0U; i < sampler->channel_count; i++)
-    {
-        float engineering;
-
-        sampler->raw[i] = frame_data[i];
-        engineering = (float)frame_data[i] * sampler->ch[i].scale
-                      + sampler->ch[i].offset;
-        sampler->value[i] = Lpf1_Update(&sampler->ch[i].lpf, engineering);
-    }
-
-    sampler->last_frame = frame;
-    sampler->has_data = 1U;
-    sampler->updated = 1U;
+    AdcSampler_ParseFrame(sampler, (uint16_t)frame);
 }
 
 float AdcSampler_Get(const AdcSampler *sampler, uint16_t channel)

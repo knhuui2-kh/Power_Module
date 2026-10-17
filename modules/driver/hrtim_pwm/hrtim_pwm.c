@@ -264,6 +264,62 @@ void HrtimPwm_StopAll(HrtimPwm *pwm)
     }
 }
 
+/* 只开关输出，不碰计数器——ADC 由 HRTIM 触发时必须用这一对。 */
+HAL_StatusTypeDef HrtimPwm_EnableOutputs(HrtimPwm *pwm)
+{
+    uint32_t output_mask = 0U;
+    uint8_t i;
+
+    if ((pwm == NULL) || (pwm->ready == 0U))
+    {
+        return HAL_ERROR;
+    }
+
+    for (i = 0U; i < pwm->channel_count; i++)
+    {
+        output_mask |= pwm->cfg[i].output1 | pwm->cfg[i].output2;
+    }
+
+    return HAL_HRTIM_WaveformOutputStart(pwm->hhrtim, output_mask);
+}
+
+HAL_StatusTypeDef HrtimPwm_DisableOutputs(HrtimPwm *pwm)
+{
+    uint32_t output_mask = 0U;
+    uint8_t i;
+
+    if ((pwm == NULL) || (pwm->ready == 0U))
+    {
+        return HAL_ERROR;
+    }
+
+    for (i = 0U; i < pwm->channel_count; i++)
+    {
+        output_mask |= pwm->cfg[i].output1 | pwm->cfg[i].output2;
+    }
+
+    return HAL_HRTIM_WaveformOutputStop(pwm->hhrtim, output_mask);
+}
+
+/* 强制一次软件更新，把预装载寄存器搬进有效寄存器。开输出前调用。 */
+HAL_StatusTypeDef HrtimPwm_SyncPreload(HrtimPwm *pwm)
+{
+    uint32_t timer_mask = 0U;
+    uint8_t i;
+
+    if ((pwm == NULL) || (pwm->ready == 0U))
+    {
+        return HAL_ERROR;
+    }
+
+    for (i = 0U; i < pwm->channel_count; i++)
+    {
+        timer_mask |= pwm->cfg[i].timer_id;
+    }
+
+    return HAL_HRTIM_SoftwareUpdate(pwm->hhrtim, timer_mask);
+}
+
 HAL_StatusTypeDef HrtimPwm_SetDuty(HrtimPwm *pwm, uint8_t channel, float duty)
 {
     uint32_t compare;

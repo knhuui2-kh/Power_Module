@@ -10,6 +10,7 @@ set(POWER_DRIVER_SOURCES
     ${POWER_MODULE_ROOT}/modules/driver/adc_sampler/adc_sampler.c
     ${POWER_MODULE_ROOT}/modules/driver/hrtim_pwm/hrtim_pwm.c
     ${POWER_MODULE_ROOT}/modules/driver/uart_debug/uart_debug.c
+    ${POWER_MODULE_ROOT}/modules/driver/oled/oled.c
 )
 
 set(POWER_INCLUDE_DIRS
@@ -18,4 +19,5 @@ set(POWER_INCLUDE_DIRS
     ${POWER_MODULE_ROOT}/modules/driver/adc_sampler
     ${POWER_MODULE_ROOT}/modules/driver/hrtim_pwm
     ${POWER_MODULE_ROOT}/modules/driver/uart_debug
+    ${POWER_MODULE_ROOT}/modules/driver/oled
 )

@@ -8,7 +8,7 @@
 
 - 目标平台：STM32G4 + STM32CubeMX + HAL
 - 算法模块：增量式 PI、滤波器
-- 驱动模块：HRTIM PWM、ADC + DMA 采样、UART 调试输出
+- 驱动模块：HRTIM PWM、ADC + DMA 采样、UART 调试输出、OLED 显示
 - 不包含：完整固件、`main.c`、CubeMX 外设初始化、板级引脚定义、临时验证工程
 
 ## 目录结构
@@ -30,9 +30,15 @@ module_power/
 │     ├─ adc_sampler/
 │     │  ├─ adc_sampler.h
 │     │  └─ adc_sampler.c
-│     └─ uart_debug/
-│        ├─ uart_debug.h
-│        └─ uart_debug.c
+│     ├─ uart_debug/
+│     │  ├─ uart_debug.h
+│     │  └─ uart_debug.c
+│     └─ oled/
+│        ├─ oled.h
+│        └─ oled.c
+├─ apps/
+│  ├─ buck_boost_openloop/
+│  └─ buck_boost_closeloop/
 ├─ docs/
 │  ├─ api_reference.md
 │  └─ integration_guide.md
@@ -41,15 +47,25 @@ module_power/
 └─ .gitignore
 ```
 
+## 独立应用工作区
+
+`apps/` 用于放置独立应用工程，已被本仓库 `.gitignore` 忽略，不属于核心库 Git 管理范围。当前包含：
+
+- `apps/buck_boost_openloop`：四开关 Buck-Boost 开环工程
+- `apps/buck_boost_closeloop`：四开关 Buck-Boost 闭环工程
+
+两个工程都是完整的 STM32CubeMX CMake 工程，互相独立，可以分别拆成单独的仓库。使用时把本库的模块源码复制到工程的 `Core/Src` 与 `Core/Inc`，工程的 CMake 会自动收集并编译。
+
 ## 模块组成
 
 | 模块 | 目录 | 依赖 HAL | 职责 |
 |---|---|---|---|
 | PID | `modules/algorithm/pid` | 否 | 增量式 PI、固定控制周期、输出限幅 |
 | Filter | `modules/algorithm/filter` | 否 | 一阶低通、滑动平均、中值滤波 |
-| HRTIM PWM | `modules/driver/hrtim_pwm` | 是 | HRTIM 逻辑通道、占空比、启停、同步启动 |
+| HRTIM PWM | `modules/driver/hrtim_pwm` | 是 | HRTIM 逻辑通道、占空比、启停、同步启动、封波 |
 | ADC Sampler | `modules/driver/adc_sampler` | 是 | HRTIM 触发 + DMA 循环采样、标定、快照 |
 | UART Debug | `modules/driver/uart_debug` | 是 | 非阻塞环形缓冲、格式化打印、丢包统计 |
+| OLED | `modules/driver/oled` | 是 | SSD1306 128x64、8x16 字库、字符串与数值显示 |
 
 ## 架构与数据流
 
@@ -78,6 +94,17 @@ HRTIM 周期事件
 ```
 
 算法层可以脱离硬件独立编译；驱动层依赖 STM32G4 HAL，但通过句柄注入与具体 CubeMX 工程解耦。
+
+控制环有两种驱动方式，按采样与控制的时序关系选择：
+
+- ADC DMA 完成回调驱动：使用 `AdcSampler_UpdateFrame()`，控制节拍由采样决定；
+- HRTIM 重复中断等周期任务驱动：使用 `AdcSampler_Update()`。
+
+两种方式的差别见 `docs/integration_guide.md`。
+
+### 库与应用的分界
+
+本库只存放与拓扑无关的可复用模块。具体拓扑的控制逻辑（四开关 Buck-Boost 的占空比映射、软启动、保护判断）、外设句柄、引脚定义和标定参数都属于应用，写在参考工程 `buck_boost_openloop/Core/Src/main.c` 的 `USER CODE` 区，不进入本库。新增模块前先判断它是通用能力还是特定拓扑的实现。
 
 ## 快速接入
 

@@ -33,6 +33,9 @@
 | HRTIM | `HrtimPwm_GetPeriod` | 获取指定通道当前周期 |
 | HRTIM | `HrtimPwm_DutyToCompare` | 占空比转换为比较值，不写寄存器 |
 | HRTIM | `HrtimPwm_PeriodFromFreq` | 频率转换为 HRTIM 周期值 |
+| HRTIM | `HrtimPwm_EnableOutputs` | 只开输出，计数器继续运行 |
+| HRTIM | `HrtimPwm_DisableOutputs` | 只关输出，计数器继续运行 |
+| HRTIM | `HrtimPwm_SyncPreload` | 强制一次软件更新，把预装载值搬进有效寄存器 |
 | ADC | `AdcSampler_Init` | 绑定 ADC、DMA 缓冲和通道标定参数 |
 | ADC | `AdcSampler_Start` | 启动 ADC DMA 循环采样 |
 | ADC | `AdcSampler_Stop` | 停止 ADC DMA |
@@ -41,6 +44,7 @@
 | ADC | `AdcSampler_GetRaw` | 获取指定通道原始值 |
 | ADC | `AdcSampler_HasData` | 是否收到过有效数据 |
 | ADC | `AdcSampler_IsUpdated` | 本次更新是否解析到新帧 |
+| ADC | `AdcSampler_UpdateFrame` | 由 ADC DMA 完成回调显式指定刚完成的帧 |
 | UART | `UartDebug_Init` | 绑定 UART 和发送缓冲区 |
 | UART | `UartDebug_Write` | 写入原始字节并尝试启动发送 |
 | UART | `UartDebug_WriteString` | 发送字符串 |
@@ -48,6 +52,12 @@
 | UART | `UartDebug_TxCpltCallback` | 在 UART 发送完成回调中调用 |
 | UART | `UartDebug_Process` | 主循环中处理发送重试 |
 | UART | `UartDebug_GetLost` | 获取缓冲区满导致的丢字节数 |
+| OLED | `Oled_Init` | 绑定 I2C 句柄并初始化屏幕 |
+| OLED | `Oled_Clear` | 清屏 |
+| OLED | `Oled_ShowChar` | 在指定位置显示一个字符 |
+| OLED | `Oled_ShowString` | 显示字符串 |
+| OLED | `Oled_ShowUInt` | 显示无符号整数 |
+| OLED | `Oled_ShowFloat` | 显示浮点数 |
 
 ---
 
@@ -260,6 +270,21 @@ typedef struct
 
 HRTIM 的时钟、Prescaler、Period、Preload、DeadTime、Reset Trigger 等由 CubeMX 配置。模块只负责运行期的比较值、输出启停和周期修改。互补输出必须由 CubeMX 使能 `DeadTimeInsertion`。
 
+### 4.5 封波的两种语义
+
+`Stop` / `StopAll` 会关闭输出**并停止计数器**；`EnableOutputs` / `DisableOutputs` 只开关输出，计数器继续运行。**保护动作必须分清这两者。** 当 ADC 由 HRTIM 触发时（控制环放在 ADC 回调里），必须用 `DisableOutputs`：计数器一停，ADC 触发和控制回调同时停，控制环就失去了判断故障是否恢复的节拍。
+
+### 4.6 预装载与 `SyncPreload`
+
+CubeMX 使能 Preload 后，写入 CMP1 的值先进预装载寄存器，要等一次更新事件才生效。初始化阶段写完比较值、开输出之前，必须调一次 `HrtimPwm_SyncPreload`，否则第一个开关周期会用复位值（CMP1 = 0）导致整周期导通。
+
+```c
+HrtimPwm_SetDuty(&g_pwm, 0U, DUTY_MIN);
+HrtimPwm_SyncPreload(&g_pwm);      /* 先把预装载搬进有效寄存器 */
+HrtimPwm_StartAll(&g_pwm);
+HrtimPwm_DisableOutputs(&g_pwm);   /* 计数器继续跑，输出先封住 */
+```
+
 ---
 
 ## 5. ADC Sampler：`adc_sampler`
@@ -349,6 +374,26 @@ DMA 缓冲区布局：
 HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
 ```
 
+### 5.5 两种取数方式
+
+| 调用位置 | 用哪个接口 | 原因 |
+|---|---|---|
+| 周期任务（如 HRTIM 重复中断） | `AdcSampler_Update()` | 它读 DMA 剩余计数推算最近一帧完整数据 |
+| ADC DMA 完成回调 | `AdcSampler_UpdateFrame(sampler, frame)` | 回调里推算不出来，必须由回调显式给帧号 |
+
+**为什么回调里不能用 `Update`**：循环 DMA 在置起传输完成标志的同一时刻已经把 `CNDTR` 重装为初值，回调执行时“剩余计数 = 总长度”，`Update` 每次都算出 0 个完整帧直接返回，控制环会一直读到旧快照。
+
+帧数为 1（一帧就是一次触发的全部 Rank）时，刚完成的帧号固定是 0：
+
+```c
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+    AdcSampler_UpdateFrame(&g_adc, 0U);
+    vout = AdcSampler_Get(&g_adc, CH_VOUT);
+    /* ... 控制计算 ... */
+}
+```
+
 ---
 
 ## 6. UART Debug：`uart_debug`
@@ -410,7 +455,50 @@ typedef struct
 
 ---
 
-## 7. 模块与工程关系
+## 7. OLED 显示：`oled`
+
+### 7.1 功能
+
+SSD1306 / SSD1315 128x64 OLED 的 I2C 驱动：
+
+- 内置 8x16 ASCII 字库（32~126），不需要外部字库文件；
+- 按页寻址直接写屏，不做显存缓存，只有改动内容时才产生 I2C 流量；
+- 提供字符、字符串、整数和浮点显示。
+
+### 7.2 数据结构
+
+```c
+typedef struct
+{
+    I2C_HandleTypeDef *hi2c;
+    uint16_t address;
+} Oled;
+```
+
+`address` 用 HAL 要求的 8 位形式（7 位地址左移一位）。SSD1306 常见 7 位地址 0x3C，对应 `OLED_ADDR_DEFAULT` = 0x78；若无显示可试 0x7A。
+
+### 7.3 API
+
+| 函数 | 说明 |
+|---|---|
+| `Oled_Init(oled, hi2c, address)` | 绑定 I2C 句柄、写初始化序列并清屏；`address` 传 0 时用默认地址 |
+| `Oled_Clear(oled)` | 8 页全部写 0 |
+| `Oled_ShowChar(oled, x, page, ch)` | 在 `(x, page)` 显示一个字符，占用 page 与 page+1 |
+| `Oled_ShowString(oled, x, page, str)` | 从 `(x, page)` 起连续显示，每字符宽 8 像素 |
+| `Oled_ShowUInt(oled, x, page, num, width)` | 右对齐显示无符号整数，`width` 为最小字符宽度 |
+| `Oled_ShowFloat(oled, x, page, num, width, decimals)` | 显示浮点数，`decimals` 为小数位数 |
+
+### 7.4 坐标与实现说明
+
+- 屏幕按页组织，共 8 页、每页 8 像素高；`x` 是像素列（0~127，建议按 8 递增）；
+- 8x16 字库一个字符占两页，所以写字的 `page` 只能取 0~6，越界直接返回；
+- 字模按“行”存放，模块内部转置成 OLED 需要的“列”格式；
+- `Oled_ShowFloat` 依赖浮点 `printf`，目标工程链接时需要 `-u _printf_float`（newlib-nano 默认不支持 `%f`）；
+- 从机不应答时 `HAL_I2C_Master_Transmit` 会一直等到超时（`OLED_I2C_TIMEOUT`），所以刷屏放在主循环，不要放进控制中断。
+
+---
+
+## 8. 模块与工程关系
 
 | 模块 | 是否需要 HAL | 是否依赖具体 CubeMX 句柄 | 是否需要外部初始化 |
 |---|---|---|---|
@@ -419,5 +507,6 @@ typedef struct
 | HRTIM PWM | 是 | 句柄由外部传入 | 是，HRTIM 基础配置 |
 | ADC Sampler | 是 | 句柄由外部传入 | 是，ADC + DMA + 触发配置 |
 | UART Debug | 是 | 句柄由外部传入 | 是，UART 配置和 NVIC |
+| OLED | 是 | 句柄由外部传入 | 是，I2C 配置 |
 
 具体工程对接步骤见 `docs/integration_guide.md`。
